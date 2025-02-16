@@ -3,15 +3,15 @@ import java.awt.*;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class TimerExample {
-    private static JLabel timeLabel1;
-    private static JLabel timeLabel2;
+    private static JLabel timeLabel;
+    private static JLabel controlTimeLabel;
     private static JLabel statusLabel;
-    private static Timer timer1;
-    private static Timer timer2;
+    private static Timer timer;
     private static Timer controlTimer;
-    private static int seconds = 0;
+    private static AtomicInteger seconds = new AtomicInteger(0);
     private static boolean canStop = true;
 
     private static final Object lock = new Object(); // Synchronization lock
@@ -23,83 +23,88 @@ public class TimerExample {
     public static void main(String[] args) {
         // Create window
         JFrame frame = new JFrame("Таймер с несколькими потоками");
-        frame.setSize(300, 300);
+        frame.setSize(500, 300);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setLayout(null);
+        frame.setLayout(new GridBagLayout());
 
-        // Labels for time display
-        timeLabel1 = new JLabel("Таймер 1: 0 секунд");
-        timeLabel1.setBounds(100, 30, 150, 30);
-        frame.add(timeLabel1);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.insets = new Insets(10, 0, 10, 0);
+        gbc.anchor = GridBagConstraints.CENTER;
 
-        timeLabel2 = new JLabel("Таймер 2: 0 секунд");
-        timeLabel2.setBounds(100, 60, 150, 30);
-        frame.add(timeLabel2);
+        // Label for time display
+        timeLabel = new JLabel("Таймер: 0 секунд");
+        frame.add(timeLabel, gbc);
+
+        // Label for control timer display
+        gbc.gridy++;
+        controlTimeLabel = new JLabel("Контрольный таймер: 0 секунд");
+        frame.add(controlTimeLabel, gbc);
 
         // Label for status
+        gbc.gridy++;
         statusLabel = new JLabel("Статус: Таймер не запущен");
-        statusLabel.setBounds(75, 100, 200, 30);
-        frame.add(statusLabel);
+        frame.add(statusLabel, gbc);
 
         // Button to start/stop timer
+        gbc.gridy++;
         JButton startButton = new JButton("Запустить таймер");
-        startButton.setBounds(75, 150, 150, 30);
-        frame.add(startButton);
+        frame.add(startButton, gbc);
 
         // Button action listener
         startButton.addActionListener(e -> {
             synchronized (lock) {
-                if (timer1 == null && timer2 == null) {
-                    // Start timers
-                    timer1 = new Timer();
-                    timer2 = new Timer();
+                if (timer == null) {
+                    // Start timer
+                    timer = new Timer();
                     controlTimer = new Timer();
 
-                    // Main timers (count seconds)
-                    timer1.scheduleAtFixedRate(new TimerTask() {
+                    // Main timer (count seconds) - starts after 1 second to align correctly
+                    timer.scheduleAtFixedRate(new TimerTask() {
                         @Override
                         public void run() {
-                            synchronized (lock) {
-                                seconds++;
-                            }
+                            int currentSeconds = seconds.incrementAndGet();
                             SwingUtilities.invokeLater(() -> {
-                                timeLabel1.setText("Таймер 1: " + seconds + " секунд");
-                                timeLabel2.setText("Таймер 2: " + seconds + " секунд");
+                                timeLabel.setText("Таймер: " + currentSeconds + " секунд");
                                 statusLabel.setText("Статус: Таймер работает");
                             });
-                            System.out.println("Таймер 1 прошло: " + seconds + " секунд");
-                            System.out.println("Таймер 2 прошло: " + seconds + " секунд");
+                            System.out.println("Прошло: " + currentSeconds + " секунд (Таймер 1)");
+                            Thread.yield();
                         }
-                    }, 0, 1000);
+                    }, 1000, 1000); // Adjusted initial delay to 1000ms
 
-                    // Control timer (7s toggle for stopping)
+                    // Control timer (3s toggle for stopping)
                     controlTimer.scheduleAtFixedRate(new TimerTask() {
+                        private int controlSeconds = 0;
+
                         @Override
                         public void run() {
                             synchronized (lock) {
                                 canStop = !canStop;
+                                controlSeconds += 3;
                             }
                             SwingUtilities.invokeLater(() -> {
+                                controlTimeLabel.setText("Контрольный таймер: " + controlSeconds + " секунд");
                                 startButton.setEnabled(canStop);
                             });
+                            System.out.println("Прошло: " + controlSeconds + " секунд (Таймер 2)");
                         }
                     }, 3000, 3000);
 
                     startButton.setText("Остановить таймер");
                 } else if (canStop) {
                     // Stop timers
-                    timer1.cancel();
-                    timer2.cancel();
+                    timer.cancel();
                     controlTimer.cancel();
-                    timer1 = null;
-                    timer2 = null;
+                    timer = null;
                     controlTimer = null;
                     synchronized (lock) {
-                        seconds = 0;
+                        seconds.set(0);
                         canStop = true;
                     }
-                    timeLabel1.setText("Таймер 1: 0 секунд");
-                    timeLabel2.setText("Таймер 2: 0 секунд");
+                    timeLabel.setText("Таймер: 0 секунд");
+                    controlTimeLabel.setText("Контрольный таймер: 0 секунд");
 
                     // Random color selection
                     Random random = new Random();

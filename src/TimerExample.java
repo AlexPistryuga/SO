@@ -5,82 +5,113 @@ import java.util.TimerTask;
 import java.util.Random;
 
 public class TimerExample {
-    private static JLabel timeLabel;
-    private static Timer timer;
-    private static Timer messageTimer;
+    private static JLabel timeLabel1;
+    private static JLabel timeLabel2;
+    private static JLabel statusLabel;
+    private static Timer timer1;
+    private static Timer timer2;
+    private static Timer controlTimer;
     private static int seconds = 0;
+    private static boolean canStop = true;
+
+    private static final Object lock = new Object(); // Synchronization lock
 
     private static final Color[] COLORS = {
             Color.RED, Color.BLUE, Color.GREEN, Color.YELLOW, Color.ORANGE, Color.CYAN, Color.MAGENTA
     };
 
     public static void main(String[] args) {
-        // Создаем окно
+        // Create window
         JFrame frame = new JFrame("Таймер с несколькими потоками");
         frame.setSize(300, 300);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLayout(null);
 
-        // Создаем метку для отображения времени
-        timeLabel = new JLabel("Время: 0 секунд");
-        timeLabel.setBounds(100, 30, 150, 30);
-        frame.add(timeLabel);
+        // Labels for time display
+        timeLabel1 = new JLabel("Таймер 1: 0 секунд");
+        timeLabel1.setBounds(100, 30, 150, 30);
+        frame.add(timeLabel1);
 
-        // Добавим еще одну метку для изменения цвета текста
-        JLabel statusLabel = new JLabel("Статус: Таймер не запущен");
+        timeLabel2 = new JLabel("Таймер 2: 0 секунд");
+        timeLabel2.setBounds(100, 60, 150, 30);
+        frame.add(timeLabel2);
+
+        // Label for status
+        statusLabel = new JLabel("Статус: Таймер не запущен");
         statusLabel.setBounds(75, 100, 200, 30);
         frame.add(statusLabel);
 
-        // Кнопка для старта таймеров
+        // Button to start/stop timer
         JButton startButton = new JButton("Запустить таймер");
         startButton.setBounds(75, 150, 150, 30);
         frame.add(startButton);
 
-        // Обработчик нажатия кнопки
+        // Button action listener
         startButton.addActionListener(e -> {
-            if (seconds == 0) {
-                // Создаем новый экземпляр Timer каждый раз при запуске
-                timer = new Timer();
-                messageTimer = new Timer();
+            synchronized (lock) {
+                if (timer1 == null && timer2 == null) {
+                    // Start timers
+                    timer1 = new Timer();
+                    timer2 = new Timer();
+                    controlTimer = new Timer();
 
-                // Запуск основного таймера (отсчет времени)
-                timer.scheduleAtFixedRate(new TimerTask() {
-                    @Override
-                    public void run() {
-                        seconds++;  // Увеличиваем счетчик секунд
-                        SwingUtilities.invokeLater(() -> {
-                            timeLabel.setText("Время: " + seconds + " секунд");
-                        });
+                    // Main timers (count seconds)
+                    timer1.scheduleAtFixedRate(new TimerTask() {
+                        @Override
+                        public void run() {
+                            synchronized (lock) {
+                                seconds++;
+                            }
+                            SwingUtilities.invokeLater(() -> {
+                                timeLabel1.setText("Таймер 1: " + seconds + " секунд");
+                                timeLabel2.setText("Таймер 2: " + seconds + " секунд");
+                                statusLabel.setText("Статус: Таймер работает");
+                            });
+                            System.out.println("Таймер 1 прошло: " + seconds + " секунд");
+                            System.out.println("Таймер 2 прошло: " + seconds + " секунд");
+                        }
+                    }, 0, 1000);
+
+                    // Control timer (7s toggle for stopping)
+                    controlTimer.scheduleAtFixedRate(new TimerTask() {
+                        @Override
+                        public void run() {
+                            synchronized (lock) {
+                                canStop = !canStop;
+                            }
+                            SwingUtilities.invokeLater(() -> {
+                                startButton.setEnabled(canStop);
+                            });
+                        }
+                    }, 3000, 3000);
+
+                    startButton.setText("Остановить таймер");
+                } else if (canStop) {
+                    // Stop timers
+                    timer1.cancel();
+                    timer2.cancel();
+                    controlTimer.cancel();
+                    timer1 = null;
+                    timer2 = null;
+                    controlTimer = null;
+                    synchronized (lock) {
+                        seconds = 0;
+                        canStop = true;
                     }
-                }, 0, 1000); // Начать немедленно и повторять каждые 1000 миллисекунд (1 секунда)
+                    timeLabel1.setText("Таймер 1: 0 секунд");
+                    timeLabel2.setText("Таймер 2: 0 секунд");
 
-                // Запуск второго таймера для вывода сообщения в консоль
-                messageTimer.scheduleAtFixedRate(new TimerTask() {
-                    @Override
-                    public void run() {
-                        System.out.println("Прошло " + seconds + " секунд");
-                    }
-                }, 0, 1000); // Каждую секунду
-
-                startButton.setText("Остановить таймер");
-            } else {
-                timer.cancel();  // Останавливаем основной таймер
-                messageTimer.cancel();  // Останавливаем второй таймер
-                startButton.setText("Запустить таймер");
-                seconds = 0;  // Сбросить секундомер
-                timeLabel.setText("Время: 0 секунд");
-
-                // Выбор случайного цвета из массива
-                Random random = new Random();
-                Color randomColor = COLORS[random.nextInt(COLORS.length)];
-
-                // Изменяем цвет текста на случайный
-                statusLabel.setText("Статус: Таймер остановлен");
-                statusLabel.setForeground(randomColor);
+                    // Random color selection
+                    Random random = new Random();
+                    Color randomColor = COLORS[random.nextInt(COLORS.length)];
+                    statusLabel.setText("Статус: Таймер остановлен");
+                    statusLabel.setForeground(randomColor);
+                    startButton.setText("Запустить таймер");
+                }
             }
         });
 
-        // Отображаем окно
+        // Show window
         frame.setVisible(true);
     }
 }

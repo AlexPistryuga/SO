@@ -13,17 +13,17 @@ public class TimerExample {
     private static Timer controlTimer;
     private static AtomicInteger seconds = new AtomicInteger(0);
     private static boolean canStop = true;
+    private static volatile int controlInterval = 3;
+    private static AtomicInteger controlSeconds = new AtomicInteger(0);
 
-    private static final Object lock = new Object(); // Synchronization lock
-
+    private static final Object lock = new Object();
     private static final Color[] COLORS = {
             Color.RED, Color.BLUE, Color.GREEN, Color.YELLOW, Color.ORANGE, Color.CYAN, Color.MAGENTA
     };
 
     public static void main(String[] args) {
-        // Create window
         JFrame frame = new JFrame("Таймер с несколькими потоками");
-        frame.setSize(500, 300);
+        frame.setSize(500, 350);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLayout(new GridBagLayout());
 
@@ -33,34 +33,38 @@ public class TimerExample {
         gbc.insets = new Insets(10, 0, 10, 0);
         gbc.anchor = GridBagConstraints.CENTER;
 
-        // Label for time display
         timeLabel = new JLabel("Таймер: 0 секунд");
         frame.add(timeLabel, gbc);
 
-        // Label for control timer display
         gbc.gridy++;
         controlTimeLabel = new JLabel("Контрольный таймер: 0 секунд");
         frame.add(controlTimeLabel, gbc);
 
-        // Label for status
         gbc.gridy++;
         statusLabel = new JLabel("Статус: Таймер не запущен");
         frame.add(statusLabel, gbc);
 
-        // Button to start/stop timer
         gbc.gridy++;
         JButton startButton = new JButton("Запустить таймер");
         frame.add(startButton, gbc);
 
-        // Button action listener
+        gbc.gridy++;
+        JPanel intervalPanel = new JPanel(new FlowLayout());
+        JTextField intervalField = new JTextField(1);
+        intervalField.setPreferredSize(new Dimension(30, 25));
+        JButton submitButton = new JButton("Установить интервал");
+        intervalPanel.add(intervalField);
+        intervalPanel.add(submitButton);
+        frame.add(intervalPanel, gbc);
+
         startButton.addActionListener(e -> {
             synchronized (lock) {
                 if (timer == null) {
-                    // Start timer
                     timer = new Timer();
                     controlTimer = new Timer();
+                    seconds.set(0);
+                    controlSeconds.set(0);
 
-                    // Main timer (count seconds) - starts after 1 second to align correctly
                     timer.scheduleAtFixedRate(new TimerTask() {
                         @Override
                         public void run() {
@@ -69,54 +73,75 @@ public class TimerExample {
                                 timeLabel.setText("Таймер: " + currentSeconds + " секунд");
                                 statusLabel.setText("Статус: Таймер работает");
                             });
-                            System.out.println("Прошло: " + currentSeconds + " секунд (Таймер 1)");
-                            Thread.yield();
                         }
-                    }, 1000, 1000); // Adjusted initial delay to 1000ms
+                    }, 1000, 1000);
 
-                    // Control timer (3s toggle for stopping)
                     controlTimer.scheduleAtFixedRate(new TimerTask() {
-                        private int controlSeconds = 0;
-
                         @Override
                         public void run() {
                             synchronized (lock) {
                                 canStop = !canStop;
-                                controlSeconds += 3;
+                                controlSeconds.addAndGet(controlInterval);
                             }
                             SwingUtilities.invokeLater(() -> {
-                                controlTimeLabel.setText("Контрольный таймер: " + controlSeconds + " секунд");
+                                controlTimeLabel.setText("Контрольный таймер: " + controlSeconds.get() + " секунд");
                                 startButton.setEnabled(canStop);
                             });
-                            System.out.println("Прошло: " + controlSeconds + " секунд (Таймер 2)");
                         }
-                    }, 3000, 3000);
+                    }, controlInterval * 1000, controlInterval * 1000);
 
                     startButton.setText("Остановить таймер");
                 } else if (canStop) {
-                    // Stop timers
                     timer.cancel();
                     controlTimer.cancel();
                     timer = null;
                     controlTimer = null;
-                    synchronized (lock) {
-                        seconds.set(0);
-                        canStop = true;
-                    }
+                    seconds.set(0);
+                    controlSeconds.set(0);
+                    canStop = true;
                     timeLabel.setText("Таймер: 0 секунд");
                     controlTimeLabel.setText("Контрольный таймер: 0 секунд");
-
-                    // Random color selection
-                    Random random = new Random();
-                    Color randomColor = COLORS[random.nextInt(COLORS.length)];
                     statusLabel.setText("Статус: Таймер остановлен");
-                    statusLabel.setForeground(randomColor);
+                    statusLabel.setForeground(COLORS[new Random().nextInt(COLORS.length)]);
                     startButton.setText("Запустить таймер");
                 }
             }
         });
 
-        // Show window
+        submitButton.addActionListener(e -> {
+            String input = intervalField.getText().trim();
+            try {
+                int newInterval = Integer.parseInt(input);
+                if (newInterval <= 0) throw new NumberFormatException();
+
+                synchronized (lock) {
+                    controlInterval = newInterval;
+                    if (controlTimer != null) {
+                        controlTimer.cancel();
+                        controlTimer = new Timer();
+                        controlTimer.scheduleAtFixedRate(new TimerTask() {
+                            @Override
+                            public void run() {
+                                synchronized (lock) {
+                                    canStop = !canStop;
+                                    controlSeconds.addAndGet(controlInterval);
+                                }
+                                SwingUtilities.invokeLater(() -> {
+                                    controlTimeLabel.setText("Контрольный таймер: " + controlSeconds.get() + " секунд");
+                                    startButton.setEnabled(canStop);
+                                });
+                            }
+                        }, controlInterval * 1000, controlInterval * 1000);
+                    }
+                }
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(frame,
+                        "Введите положительное целое число",
+                        "Ошибка",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
         frame.setVisible(true);
     }
 }
